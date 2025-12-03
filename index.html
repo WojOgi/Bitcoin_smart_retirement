@@ -171,9 +171,15 @@
                     </div>
                 </div>
 
-                <div class="input-group">
-                    <label>Simulation Duration (Years)</label>
-                    <input type="number" id="simYears" value="10">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="input-group">
+                        <label>Duration (Years)</label>
+                        <input type="number" id="simYears" value="10">
+                    </div>
+                    <div class="input-group">
+                        <label>Num. Simulations</label>
+                        <input type="number" id="nSims" value="1000" step="1000" max="100000">
+                    </div>
                 </div>
 
                 <button class="btn-primary mt-4" onclick="runSimulation()">Run Simulation</button>
@@ -474,6 +480,9 @@
     // --- Simulation Engine ---
     function runSimulation() {
         // 1. Gather Inputs
+        const nSimsInput = parseInt(document.getElementById('nSims').value);
+        const nSims = isNaN(nSimsInput) ? 1000 : nSimsInput;
+
         const inputs = {
             btcInitial: parseFloat(document.getElementById('startBtc').value),
             cashInitial: parseFloat(document.getElementById('startCash').value),
@@ -500,7 +509,6 @@
         };
         globalInputs = inputs;
 
-        const nSims = 1000;
         const totalMonths = inputs.simYears * 12;
         const dt = 1/12;
         
@@ -527,6 +535,9 @@
         let currentIdeals = new Float64Array(nSims).fill(inputs.idealBase);
 
         const monthlyInterest = Math.pow(1 + inputs.cashInterest, 1/12);
+        
+        // Temp array for sorting pensions per month for chart percentiles
+        let currentMonthPensions = new Float64Array(nSims);
 
         // Simulation Loop
         for (let m = 0; m < totalMonths; m++) {
@@ -628,6 +639,8 @@
                     simCash[i] += simBtc[i]; 
                     simBtc[i] = 0;
                 }
+                
+                currentMonthPensions[i] = targetPension;
             }
             
             monthsCounted += nSims;
@@ -641,7 +654,9 @@
                  historyWealth.push({
                      m: m,
                      p10: wealths[Math.floor(nSims * 0.1)],
+                     p30: wealths[Math.floor(nSims * 0.3)],
                      p50: wealths[Math.floor(nSims * 0.5)],
+                     p70: wealths[Math.floor(nSims * 0.7)],
                      p90: wealths[Math.floor(nSims * 0.9)]
                  });
                  
@@ -650,20 +665,22 @@
                  historyBuffer.push({
                      m: m,
                      p10: cashes[Math.floor(nSims * 0.1)],
+                     p30: cashes[Math.floor(nSims * 0.3)],
                      p50: cashes[Math.floor(nSims * 0.5)],
+                     p70: cashes[Math.floor(nSims * 0.7)],
                      p90: cashes[Math.floor(nSims * 0.9)]
                  });
 
-                 // Pension Proxy for Chart
-                 const medWealth = wealths[Math.floor(nSims * 0.5)];
-                 const medFloor = inputs.floorBase * Math.pow(1+inputs.pensionGrowth, yearIdx); 
-                 const medIdeal = inputs.idealBase * Math.pow(1+inputs.pensionGrowth, yearIdx);
-                 const medCap = medWealth * inputs.wRatePct * 0.8; 
-                 const medPay = Math.max(medFloor, Math.min(medIdeal, medCap));
-                 
+                 // Pension Sort (Use currentMonthPensions captured in loop)
+                 let sortedPensions = new Float64Array(currentMonthPensions);
+                 sortedPensions.sort();
                  historyPension.push({
                      m: m,
-                     val: medPay
+                     p10: sortedPensions[Math.floor(nSims * 0.1)],
+                     p30: sortedPensions[Math.floor(nSims * 0.3)],
+                     p50: sortedPensions[Math.floor(nSims * 0.5)],
+                     p70: sortedPensions[Math.floor(nSims * 0.7)],
+                     p90: sortedPensions[Math.floor(nSims * 0.9)]
                  });
             }
         }
@@ -820,28 +837,44 @@
                 datasets: [
                     {
                         label: 'Lucky (90%)',
-                        data: dataP90,
                         borderColor: '#059669',
                         borderWidth: 2,
                         pointRadius: 0,
-                        fill: false
+                        fill: false,
+                        data: []
+                    },
+                    {
+                        label: 'Semi-Lucky (70%)',
+                        borderColor: '#7c3aed',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false,
+                        data: []
                     },
                     {
                         label: 'Median (50%)',
-                        data: dataP50,
                         borderColor: '#2563eb',
                         borderWidth: 3,
                         pointRadius: 0,
-                        fill: false
+                        fill: false,
+                        data: []
+                    },
+                    {
+                        label: 'Semi-Unlucky (30%)',
+                        borderColor: '#d97706',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false,
+                        data: []
                     },
                     {
                         label: 'Unlucky (10%)',
-                        data: dataP10,
                         borderColor: '#dc2626',
                         borderWidth: 2,
                         pointRadius: 0,
                         borderDash: [5, 5],
-                        fill: false
+                        fill: false,
+                        data: []
                     }
                 ]
             },
@@ -863,7 +896,9 @@
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return value / 1000000 + 'M';
+                                if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                                if (value >= 1000) return (value / 1000).toFixed(0) + 'k';
+                                return value;
                             }
                         }
                     }
@@ -872,6 +907,51 @@
         });
         
         window.currentChartData = { wealth: wealthData, pension: pensionData, buffer: bufferData, labels: labels };
+        
+        // Trigger data population for currently active tab
+        const activeTab = document.querySelector('.tab-btn.active');
+        if (activeTab) {
+            // Re-trigger click logic manually or call function
+            // Identify type by text content
+            let type = 'wealth';
+            if (activeTab.innerText.includes('Pension')) type = 'pension';
+            if (activeTab.innerText.includes('Buffer')) type = 'buffer';
+            
+            // Populate
+            const d = window.currentChartData;
+            let dataArrays = []; // 90, 70, 50, 30, 10
+            
+            if (type === 'wealth') {
+                dataArrays = [
+                    d.wealth.map(x => x.p90),
+                    d.wealth.map(x => x.p70),
+                    d.wealth.map(x => x.p50),
+                    d.wealth.map(x => x.p30),
+                    d.wealth.map(x => x.p10)
+                ];
+            } else if (type === 'buffer') {
+                dataArrays = [
+                    d.buffer.map(x => x.p90),
+                    d.buffer.map(x => x.p70),
+                    d.buffer.map(x => x.p50),
+                    d.buffer.map(x => x.p30),
+                    d.buffer.map(x => x.p10)
+                ];
+            } else {
+                dataArrays = [
+                    d.pension.map(x => x.p90),
+                    d.pension.map(x => x.p70),
+                    d.pension.map(x => x.p50),
+                    d.pension.map(x => x.p30),
+                    d.pension.map(x => x.p10)
+                ];
+            }
+            
+            for(let i=0; i<5; i++) {
+                chartInstance.data.datasets[i].data = dataArrays[i];
+            }
+            chartInstance.update();
+        }
     }
 
     function switchTab(type) {
@@ -881,29 +961,37 @@
         event.target.classList.add('active');
 
         const d = window.currentChartData;
-        let p10, p50, p90, yFormat;
+        let dataArrays = [];
 
         if (type === 'wealth') {
-            p10 = d.wealth.map(x => x.p10);
-            p50 = d.wealth.map(x => x.p50);
-            p90 = d.wealth.map(x => x.p90);
-            yFormat = (v) => v/1000000 + 'M';
+            dataArrays = [
+                d.wealth.map(x => x.p90),
+                d.wealth.map(x => x.p70),
+                d.wealth.map(x => x.p50),
+                d.wealth.map(x => x.p30),
+                d.wealth.map(x => x.p10)
+            ];
         } else if (type === 'buffer') {
-            p10 = d.buffer.map(x => x.p10);
-            p50 = d.buffer.map(x => x.p50);
-            p90 = d.buffer.map(x => x.p90);
-            yFormat = (v) => v/1000000 + 'M';
+            dataArrays = [
+                d.buffer.map(x => x.p90),
+                d.buffer.map(x => x.p70),
+                d.buffer.map(x => x.p50),
+                d.buffer.map(x => x.p30),
+                d.buffer.map(x => x.p10)
+            ];
         } else {
-            p50 = d.pension.map(x => x.val);
-            p10 = p50.map(v => v * 0.65); 
-            p90 = p50.map(v => v * 1.3);
-            yFormat = (v) => v/1000 + 'k';
+            dataArrays = [
+                d.pension.map(x => x.p90),
+                d.pension.map(x => x.p70),
+                d.pension.map(x => x.p50),
+                d.pension.map(x => x.p30),
+                d.pension.map(x => x.p10)
+            ];
         }
 
-        chartInstance.data.datasets[0].data = p90;
-        chartInstance.data.datasets[1].data = p50;
-        chartInstance.data.datasets[2].data = p10;
-        chartInstance.options.scales.y.ticks.callback = yFormat;
+        for(let i=0; i<5; i++) {
+            chartInstance.data.datasets[i].data = dataArrays[i];
+        }
         chartInstance.update();
     }
 
