@@ -55,21 +55,33 @@
                     <h2 class="text-lg font-bold mb-4 text-gray-900">1. Strategy Logic</h2>
                     <div class="input-group">
                         <label>Rebalancing Strategy</label>
-                        <select id="strategyType">
+                        <select id="strategyType" onchange="updateStrategyDesc()">
                             <option value="match_pension">Monthly: Match Pension (Recommended)</option>
                             <option value="skim_1_5">Monthly: Skim 1.5% on Up Months</option>
                             <option value="annual_10">Annual: Sell 10% after Good Year</option>
                             <option value="simple">Simple: No Buffer Refill</option>
                         </select>
                     </div>
+                    
+                    <!-- Strategy Description Box -->
+                    <div id="strategyDescription" class="text-xs text-gray-600 mt-2 p-3 bg-orange-50 rounded border border-orange-100">
+                        <!-- JS Populates this -->
+                    </div>
+
                     <div class="input-group mt-3">
                         <label>Withdrawal Rule</label>
-                        <select id="withdrawalRule">
+                        <select id="withdrawalRule" onchange="updateWithdrawalDesc()">
                             <option value="hybrid_floor">Hybrid (Lower of Ideal vs Cap, but > Floor)</option>
                             <option value="strict_cap">Strict Cap (Never exceed % of BTC)</option>
                             <option value="fixed">Fixed Target (Ignore Portfolio Value)</option>
                         </select>
                     </div>
+
+                    <!-- Withdrawal Description Box -->
+                    <div id="withdrawalDescription" class="text-xs text-gray-600 mt-2 p-3 bg-blue-50 rounded border border-blue-100">
+                        <!-- JS Populates this -->
+                    </div>
+
                     <div class="flex items-center mt-4">
                         <input type="checkbox" id="inflationFreeze" class="w-4 h-4 text-orange-500 rounded" checked>
                         <label for="inflationFreeze" class="ml-2 text-sm text-gray-700 font-medium cursor-pointer">
@@ -240,6 +252,54 @@
     let chartInstance = null;
     let globalSimResults = null; // Store simulation results to avoid re-running on table toggle
     let globalInputs = null;
+
+    // --- Strategy Descriptions ---
+    const strategyInfo = {
+        'match_pension': {
+            desc: "<strong>Logic:</strong> On positive months, sell 2x pension amount (1x for living, 1x to buffer). On negative months, pay from buffer.",
+            ex: "<strong>Example:</strong> Pension 10k. BTC Up? Sell 20k BTC (10k pocket, 10k buffer). BTC Down? Sell 0 BTC, take 10k from Buffer."
+        },
+        'skim_1_5': {
+            desc: "<strong>Logic:</strong> On positive months, sell pension amount + 1.5% of total Bitcoin holdings to buffer. On negative months, pay from buffer.",
+            ex: "<strong>Example:</strong> Portfolio 1M. Pension 10k. BTC Up? Sell 10k (pension) + 15k (1.5% skim) to Buffer."
+        },
+        'annual_10': {
+            desc: "<strong>Logic:</strong> Once a year (Jan), if previous year was positive, sell 10% of Bitcoin holdings to buffer. Monthly payments come from Buffer if BTC is down.",
+            ex: "<strong>Example:</strong> Jan 1st, BTC holding 1M. Last year up? Sell 100k to Buffer."
+        },
+        'simple': {
+            desc: "<strong>Logic:</strong> Standard withdrawal. Pay from Buffer only when Bitcoin drops to avoid selling low. No proactive profit taking.",
+            ex: "<strong>Example:</strong> BTC Down? Use cash. BTC Up? Sell BTC for pension."
+        }
+    };
+
+    // --- Withdrawal Descriptions ---
+    const withdrawalInfo = {
+        'hybrid_floor': {
+            desc: "<strong>Logic:</strong> Flexible withdrawal. Calculate Safe Cap (0.5% of BTC). If Cap is between Floor and Ideal, take Cap. If Cap > Ideal, take Ideal (save remainder). If Cap < Floor, take Floor (subsidized by Buffer).",
+            ex: "<strong>Example:</strong> Floor 10k, Ideal 15k. <br>• Cap = 8k? Take 10k (Buffer covers 2k).<br>• Cap = 12k? Take 12k.<br>• Cap = 20k? Take 15k."
+        },
+        'strict_cap': {
+            desc: "<strong>Logic:</strong> Rigid safety. Always take exactly the Safe Cap % (e.g. 0.5% of BTC). No floor protection.",
+            ex: "<strong>Example:</strong> BTC drops to 1M? Pension is 5k. BTC rises to 4M? Pension is 20k. Income fluctuates wildly."
+        },
+        'fixed': {
+            desc: "<strong>Logic:</strong> Rigid lifestyle. Always take the Ideal Pension amount adjusted for inflation, regardless of portfolio performance.",
+            ex: "<strong>Example:</strong> Ideal 15k. BTC crashes? Still take 15k. High risk of depleting capital early."
+        }
+    };
+
+    function updateStrategyDesc() {
+        const val = document.getElementById('strategyType').value;
+        const info = strategyInfo[val];
+        document.getElementById('strategyDescription').innerHTML = `${info.desc}<br><div class="mt-1 text-gray-500">${info.ex}</div>`;
+    }
+
+    function updateWithdrawalDesc() {
+        const val = document.getElementById('withdrawalRule').value;
+        const info = withdrawalInfo[val];
+        document.getElementById('withdrawalDescription').innerHTML = `${info.desc}<br><div class="mt-1 text-gray-500">${info.ex}</div>`;
+    }
 
     // --- Simulation Engine ---
     function runSimulation() {
@@ -508,8 +568,7 @@
         tableBody.innerHTML = '';
         const simYears = globalInputs.simYears;
         const yearsToShow = [];
-        for(let y=0; y<=simYears; y+=5) yearsToShow.push(2030 + y);
-        if(yearsToShow[yearsToShow.length-1] !== 2030+simYears) yearsToShow.push(2030+simYears);
+        for(let y=0; y<=simYears; y++) yearsToShow.push(2030 + y); // Show ALL years
 
         const growth = globalInputs.pensionGrowth;
         const baseFloor = globalInputs.floorBase;
@@ -677,6 +736,10 @@
         document.getElementById('freezeLabel').innerText = (e.target.value / 1000) + 'k';
     });
 
+    // Initialize Desc
+    updateStrategyDesc();
+    updateWithdrawalDesc();
+    
     // Initial Run
     runSimulation();
 
