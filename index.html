@@ -23,11 +23,12 @@
         tr:last-child td { border-bottom: none; }
         
         /* Scenario Colors */
-        .sc-unlucky { color: #dc2626; }
-        .sc-semi-unlucky { color: #d97706; }
-        .sc-median { color: #2563eb; }
-        .sc-semi-lucky { color: #7c3aed; }
-        .sc-lucky { color: #059669; }
+        .sc-ex-unlucky { color: #7f1d1d; } /* Dark Red */
+        .sc-unlucky { color: #dc2626; } /* Red */
+        .sc-semi-unlucky { color: #d97706; } /* Orange */
+        .sc-median { color: #2563eb; } /* Blue */
+        .sc-semi-lucky { color: #7c3aed; } /* Purple */
+        .sc-lucky { color: #059669; } /* Green */
 
         .tab-btn { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; color: #6b7280; }
         .tab-btn.active { color: #f7931a; border-bottom-color: #f7931a; }
@@ -35,8 +36,8 @@
         .tooltip { position: relative; display: inline-block; cursor: help; margin-left: 4px; color: #9ca3af; }
         .tooltip:hover::after { content: attr(data-tip); position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); background: #374151; color: white; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; width: 200px; z-index: 10; margin-bottom: 5px; }
         
-        .checkbox-wrapper { display: flex; align-items: center; margin-right: 15px; cursor: pointer; }
-        .checkbox-wrapper input { margin-right: 6px; }
+        .checkbox-wrapper { display: flex; align-items: center; margin-right: 12px; cursor: pointer; font-size: 0.85rem; user-select: none; }
+        .checkbox-wrapper input { margin-right: 6px; accent-color: currentColor; }
 
         /* Calculator Styles */
         .calc-result-box { border-left: 4px solid #3b82f6; background-color: #eff6ff; padding: 16px; border-radius: 4px; margin-top: 20px; }
@@ -204,17 +205,30 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-value text-gray-600" id="statUnluckyWealth">--</div>
-                        <div class="stat-label">Unlucky Outcome (PLN)</div>
+                        <div class="stat-label">Unlucky (10%) Outcome</div>
                     </div>
                 </div>
 
                 <!-- Charts -->
                 <div class="card">
-                    <div class="flex border-b border-gray-200 mb-4">
-                        <div class="tab-btn active" onclick="switchTab('wealth')">Total Capital</div>
-                        <div class="tab-btn" onclick="switchTab('pension')">Monthly Pension</div>
-                        <div class="tab-btn" onclick="switchTab('buffer')">Cash Buffer</div>
+                    <div class="flex items-center justify-between border-b border-gray-200 mb-4">
+                        <div class="flex">
+                            <div class="tab-btn active" onclick="switchTab('wealth')">Total Capital</div>
+                            <div class="tab-btn" onclick="switchTab('pension')">Monthly Pension</div>
+                            <div class="tab-btn" onclick="switchTab('buffer')">Cash Buffer</div>
+                        </div>
                     </div>
+                    
+                    <!-- Chart Visibility Controls -->
+                    <div class="flex flex-wrap gap-2 mb-3 justify-center text-xs">
+                        <label class="checkbox-wrapper sc-ex-unlucky font-bold"><input type="checkbox" id="chartShowExUnlucky" onchange="updateChartVisibility()" checked> Extreme (5%)</label>
+                        <label class="checkbox-wrapper sc-unlucky font-bold"><input type="checkbox" id="chartShowUnlucky" onchange="updateChartVisibility()" checked> Unlucky (10%)</label>
+                        <label class="checkbox-wrapper sc-semi-unlucky font-bold"><input type="checkbox" id="chartShowSemiUnlucky" onchange="updateChartVisibility()"> Semi-Un (30%)</label>
+                        <label class="checkbox-wrapper sc-median font-bold"><input type="checkbox" id="chartShowMedian" onchange="updateChartVisibility()" checked> Median (50%)</label>
+                        <label class="checkbox-wrapper sc-semi-lucky font-bold"><input type="checkbox" id="chartShowSemiLucky" onchange="updateChartVisibility()"> Semi-Lu (70%)</label>
+                        <label class="checkbox-wrapper sc-lucky font-bold"><input type="checkbox" id="chartShowLucky" onchange="updateChartVisibility()" checked> Lucky (90%)</label>
+                    </div>
+
                     <div style="height: 300px;">
                         <canvas id="mainChart"></canvas>
                     </div>
@@ -224,13 +238,16 @@
                 <div class="card overflow-x-auto">
                     <h3 class="text-lg font-bold mb-2 text-gray-900">Yearly Breakdown</h3>
                     
-                    <!-- Toggle Controls -->
+                    <!-- Table Toggle Controls -->
                     <div class="flex flex-wrap gap-2 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <label class="checkbox-wrapper sc-ex-unlucky font-semibold">
+                            <input type="checkbox" id="showExUnlucky" onchange="renderTable()"> Extreme (5%)
+                        </label>
                         <label class="checkbox-wrapper sc-unlucky font-semibold">
                             <input type="checkbox" id="showUnlucky" onchange="renderTable()" checked> Unlucky (10%)
                         </label>
                         <label class="checkbox-wrapper sc-semi-unlucky font-semibold">
-                            <input type="checkbox" id="showSemiUnlucky" onchange="renderTable()" checked> Semi-Unlucky (30%)
+                            <input type="checkbox" id="showSemiUnlucky" onchange="renderTable()"> Semi-Unlucky (30%)
                         </label>
                         <label class="checkbox-wrapper sc-median font-semibold">
                             <input type="checkbox" id="showMedian" onchange="renderTable()" checked> Median (50%)
@@ -653,6 +670,7 @@
                  
                  historyWealth.push({
                      m: m,
+                     p05: wealths[Math.floor(nSims * 0.05)],
                      p10: wealths[Math.floor(nSims * 0.1)],
                      p30: wealths[Math.floor(nSims * 0.3)],
                      p50: wealths[Math.floor(nSims * 0.5)],
@@ -664,6 +682,7 @@
                  cashes.sort();
                  historyBuffer.push({
                      m: m,
+                     p05: cashes[Math.floor(nSims * 0.05)],
                      p10: cashes[Math.floor(nSims * 0.1)],
                      p30: cashes[Math.floor(nSims * 0.3)],
                      p50: cashes[Math.floor(nSims * 0.5)],
@@ -671,11 +690,11 @@
                      p90: cashes[Math.floor(nSims * 0.9)]
                  });
 
-                 // Pension Sort (Use currentMonthPensions captured in loop)
                  let sortedPensions = new Float64Array(currentMonthPensions);
                  sortedPensions.sort();
                  historyPension.push({
                      m: m,
+                     p05: sortedPensions[Math.floor(nSims * 0.05)],
                      p10: sortedPensions[Math.floor(nSims * 0.1)],
                      p30: sortedPensions[Math.floor(nSims * 0.3)],
                      p50: sortedPensions[Math.floor(nSims * 0.5)],
@@ -686,8 +705,6 @@
         }
 
         // --- 4. Final Analysis Data Structure ---
-        // We need to capture End State for every scenario
-        // Sorting by Total Wealth to determine percentiles
         let finalState = [];
         for(let i=0; i<nSims; i++) {
             finalState.push({
@@ -699,8 +716,8 @@
         }
         finalState.sort((a, b) => a.val - b.val);
 
-        // Store scenarios in global state for the renderer
         globalSimResults = {
+            exUnlucky: finalState[Math.floor(nSims * 0.05)],
             unlucky: finalState[Math.floor(nSims * 0.1)],
             semiUnlucky: finalState[Math.floor(nSims * 0.3)],
             median: finalState[Math.floor(nSims * 0.5)],
@@ -711,7 +728,6 @@
 
         const medianMult = globalSimResults.median.val / (btcStart + cashStart);
 
-        // Update KPI
         document.getElementById('statSurvival').innerText = (globalSimResults.survivalRate * 100).toFixed(1) + "%";
         document.getElementById('statMedianWealth').innerText = medianMult.toFixed(2) + "x";
         document.getElementById('statFloorHit').innerText = ((floorHits / monthsCounted) * 100).toFixed(1) + "%";
@@ -719,13 +735,8 @@
         const unluckyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(globalSimResults.unlucky.val);
         document.getElementById('statUnluckyWealth').innerText = unluckyFmt;
 
-        // Render Visuals
         renderTable();
         updateChart(historyWealth, historyPension, historyBuffer);
-        
-        // Auto update calc based on first year simulation values for user convenience
-        // document.getElementById('calcBtc').value = Math.round(btcStart);
-        // document.getElementById('calcBuffer').value = Math.round(cashStart);
         updateCalculator();
     }
 
@@ -735,8 +746,8 @@
         const tableHead = document.querySelector('#resultsTable thead');
         const tableBody = document.querySelector('#resultsTable tbody');
         
-        // 1. Determine Visible Scenarios
         const scenarios = [
+            { key: 'exUnlucky', label: 'Extreme (5%)', cls: 'sc-ex-unlucky', show: document.getElementById('showExUnlucky').checked },
             { key: 'unlucky', label: 'Unlucky (10%)', cls: 'sc-unlucky', show: document.getElementById('showUnlucky').checked },
             { key: 'semiUnlucky', label: 'Semi (30%)', cls: 'sc-semi-unlucky', show: document.getElementById('showSemiUnlucky').checked },
             { key: 'median', label: 'Median (50%)', cls: 'sc-median', show: document.getElementById('showMedian').checked },
@@ -744,7 +755,6 @@
             { key: 'lucky', label: 'Lucky (90%)', cls: 'sc-lucky', show: document.getElementById('showLucky').checked }
         ];
 
-        // 2. Build Header
         let headerHTML = '<tr><th class="text-left">Year</th><th>Target Range</th>';
         scenarios.forEach(s => {
             if (s.show) {
@@ -756,11 +766,10 @@
         headerHTML += '</tr>';
         tableHead.innerHTML = headerHTML;
 
-        // 3. Build Body
         tableBody.innerHTML = '';
         const simYears = globalInputs.simYears;
         const yearsToShow = [];
-        for(let y=0; y<=simYears; y++) yearsToShow.push(2030 + y); // Show ALL years
+        for(let y=0; y<=simYears; y++) yearsToShow.push(2030 + y); 
 
         const growth = globalInputs.pensionGrowth;
         const baseFloor = globalInputs.floorBase;
@@ -771,7 +780,6 @@
             const offset = y - 2030;
             const ratio = offset / simYears;
             
-            // Calc Targets
             const f = baseFloor * Math.pow(1+growth, offset);
             const i = baseIdeal * Math.pow(1+growth, offset);
             
@@ -780,26 +788,22 @@
             scenarios.forEach(s => {
                 if (s.show) {
                     const data = globalSimResults[s.key];
-                    // Interpolation Logic for Table Display (Approximation of path)
-                    
-                    // Wealth Interpolation (Power law for Median/Lucky, Linear decay for Unlucky)
                     let w = 0;
-                    const startW = 2700000; // Approx 2030 start
-                    if (s.key === 'unlucky') {
+                    const startW = 2700000; 
+                    if (s.key === 'unlucky' || s.key === 'exUnlucky') {
                         w = data.val > 0 ? (startW * (1-ratio) + data.val * ratio) : (startW * (1-ratio)); 
                     } else {
                         w = startW * Math.pow(Math.max(0.1, data.val)/startW, ratio);
                     }
 
-                    // Buffer Interpolation
                     const startB = 225000;
                     const endB = data.cash;
                     let b = startB + (endB - startB) * ratio;
                     if (b < 0) b = 0;
 
-                    // Pension Approximation
                     let p = 0;
-                    if (s.key === 'unlucky') p = f;
+                    if (s.key === 'exUnlucky') p = f * 0.9;
+                    else if (s.key === 'unlucky') p = f;
                     else if (s.key === 'semiUnlucky') p = f * 1.1;
                     else if (s.key === 'median') p = (f+i)/2;
                     else p = i;
@@ -815,6 +819,25 @@
         });
     }
 
+    // New function to handle chart visibility based on checkboxes
+    function updateChartVisibility() {
+        if (!window.currentChartData || !chartInstance) return;
+        
+        const visibility = {
+            'Lucky (90%)': document.getElementById('chartShowLucky').checked,
+            'Semi-Lucky (70%)': document.getElementById('chartShowSemiLucky').checked,
+            'Median (50%)': document.getElementById('chartShowMedian').checked,
+            'Semi-Unlucky (30%)': document.getElementById('chartShowSemiUnlucky').checked,
+            'Unlucky (10%)': document.getElementById('chartShowUnlucky').checked,
+            'Extreme (5%)': document.getElementById('chartShowExUnlucky').checked
+        };
+
+        chartInstance.data.datasets.forEach(ds => {
+            ds.hidden = !visibility[ds.label];
+        });
+        chartInstance.update();
+    }
+
     function updateChart(wealthData, pensionData, bufferData) {
         const ctx = document.getElementById('mainChart').getContext('2d');
         
@@ -826,56 +849,23 @@
             return date.getFullYear();
         });
 
-        const dataP10 = wealthData.map(d => d.p10);
-        const dataP50 = wealthData.map(d => d.p50);
-        const dataP90 = wealthData.map(d => d.p90);
+        // Initialize empty, populated by switchTab logic
+        // But to support initial load, we must populate
+        // Let's populate Wealth data by default
+        
+        const d = wealthData;
 
         chartInstance = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [
-                    {
-                        label: 'Lucky (90%)',
-                        borderColor: '#059669',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: false,
-                        data: []
-                    },
-                    {
-                        label: 'Semi-Lucky (70%)',
-                        borderColor: '#7c3aed',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: false,
-                        data: []
-                    },
-                    {
-                        label: 'Median (50%)',
-                        borderColor: '#2563eb',
-                        borderWidth: 3,
-                        pointRadius: 0,
-                        fill: false,
-                        data: []
-                    },
-                    {
-                        label: 'Semi-Unlucky (30%)',
-                        borderColor: '#d97706',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: false,
-                        data: []
-                    },
-                    {
-                        label: 'Unlucky (10%)',
-                        borderColor: '#dc2626',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        borderDash: [5, 5],
-                        fill: false,
-                        data: []
-                    }
+                    { label: 'Lucky (90%)', borderColor: '#059669', borderWidth: 2, pointRadius: 0, fill: false, data: d.map(x=>x.p90) },
+                    { label: 'Semi-Lucky (70%)', borderColor: '#7c3aed', borderWidth: 2, pointRadius: 0, fill: false, data: d.map(x=>x.p70) },
+                    { label: 'Median (50%)', borderColor: '#2563eb', borderWidth: 3, pointRadius: 0, fill: false, data: d.map(x=>x.p50) },
+                    { label: 'Semi-Unlucky (30%)', borderColor: '#d97706', borderWidth: 2, pointRadius: 0, fill: false, data: d.map(x=>x.p30) },
+                    { label: 'Unlucky (10%)', borderColor: '#dc2626', borderWidth: 2, pointRadius: 0, borderDash: [5, 5], fill: false, data: d.map(x=>x.p10) },
+                    { label: 'Extreme (5%)', borderColor: '#7f1d1d', borderWidth: 1, pointRadius: 0, borderDash: [2, 2], fill: false, data: d.map(x=>x.p05) }
                 ]
             },
             options: {
@@ -908,50 +898,8 @@
         
         window.currentChartData = { wealth: wealthData, pension: pensionData, buffer: bufferData, labels: labels };
         
-        // Trigger data population for currently active tab
-        const activeTab = document.querySelector('.tab-btn.active');
-        if (activeTab) {
-            // Re-trigger click logic manually or call function
-            // Identify type by text content
-            let type = 'wealth';
-            if (activeTab.innerText.includes('Pension')) type = 'pension';
-            if (activeTab.innerText.includes('Buffer')) type = 'buffer';
-            
-            // Populate
-            const d = window.currentChartData;
-            let dataArrays = []; // 90, 70, 50, 30, 10
-            
-            if (type === 'wealth') {
-                dataArrays = [
-                    d.wealth.map(x => x.p90),
-                    d.wealth.map(x => x.p70),
-                    d.wealth.map(x => x.p50),
-                    d.wealth.map(x => x.p30),
-                    d.wealth.map(x => x.p10)
-                ];
-            } else if (type === 'buffer') {
-                dataArrays = [
-                    d.buffer.map(x => x.p90),
-                    d.buffer.map(x => x.p70),
-                    d.buffer.map(x => x.p50),
-                    d.buffer.map(x => x.p30),
-                    d.buffer.map(x => x.p10)
-                ];
-            } else {
-                dataArrays = [
-                    d.pension.map(x => x.p90),
-                    d.pension.map(x => x.p70),
-                    d.pension.map(x => x.p50),
-                    d.pension.map(x => x.p30),
-                    d.pension.map(x => x.p10)
-                ];
-            }
-            
-            for(let i=0; i<5; i++) {
-                chartInstance.data.datasets[i].data = dataArrays[i];
-            }
-            chartInstance.update();
-        }
+        // Apply initial visibility from checkboxes
+        updateChartVisibility();
     }
 
     function switchTab(type) {
@@ -961,37 +909,31 @@
         event.target.classList.add('active');
 
         const d = window.currentChartData;
-        let dataArrays = [];
+        let source;
 
-        if (type === 'wealth') {
-            dataArrays = [
-                d.wealth.map(x => x.p90),
-                d.wealth.map(x => x.p70),
-                d.wealth.map(x => x.p50),
-                d.wealth.map(x => x.p30),
-                d.wealth.map(x => x.p10)
-            ];
-        } else if (type === 'buffer') {
-            dataArrays = [
-                d.buffer.map(x => x.p90),
-                d.buffer.map(x => x.p70),
-                d.buffer.map(x => x.p50),
-                d.buffer.map(x => x.p30),
-                d.buffer.map(x => x.p10)
-            ];
+        if (type === 'wealth') source = d.wealth;
+        else if (type === 'buffer') source = d.buffer;
+        else source = d.pension;
+
+        // Map data to datasets
+        // Order: Lucky, SemiLucky, Median, SemiUnlucky, Unlucky, Extreme
+        const keys = ['p90', 'p70', 'p50', 'p30', 'p10', 'p05'];
+        
+        chartInstance.data.datasets.forEach((ds, i) => {
+            ds.data = source.map(x => x[keys[i]]);
+        });
+        
+        // Update Y Axis Format
+        if (type === 'pension') {
+             chartInstance.options.scales.y.ticks.callback = (v) => (v/1000).toFixed(0) + 'k';
         } else {
-            dataArrays = [
-                d.pension.map(x => x.p90),
-                d.pension.map(x => x.p70),
-                d.pension.map(x => x.p50),
-                d.pension.map(x => x.p30),
-                d.pension.map(x => x.p10)
-            ];
+             chartInstance.options.scales.y.ticks.callback = (v) => {
+                 if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+                 if (v >= 1000) return (v / 1000).toFixed(0) + 'k';
+                 return v;
+             };
         }
 
-        for(let i=0; i<5; i++) {
-            chartInstance.data.datasets[i].data = dataArrays[i];
-        }
         chartInstance.update();
     }
 
@@ -999,11 +941,8 @@
         document.getElementById('freezeLabel').innerText = (e.target.value / 1000) + 'k';
     });
 
-    // Initialize Desc
     updateStrategyDesc();
     updateWithdrawalDesc();
-    
-    // Initial Run
     runSimulation();
 
 </script>
