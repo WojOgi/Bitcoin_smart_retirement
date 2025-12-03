@@ -1,1 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Retirement Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 24px; margin-bottom: 20px; }
+        .input-group label { display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 4px; }
+        .input-group input, .input-group select { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
+        .input-group input:focus { outline: none; border-color: #3b82f6; ring: 2px #3b82f6; }
+        .btn-primary { background-color: #f7931a; color: white; font-weight: 600; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; transition: background 0.2s; width: 100%; }
+        .btn-primary:hover { background-color: #e68b15; }
+        .stat-card { background: #f9fafb; border-radius: 8px; padding: 16px; text-align: center; border: 1px solid #e5e7eb; }
+        .stat-value { font-size: 1.5rem; font-weight: 700; color: #111827; }
+        .stat-label { font-size: 0.8rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th { background-color: #f3f4f6; padding: 10px; text-align: right; font-weight: 600; color: #374151; position: sticky; top: 0; white-space: nowrap; }
+        td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #e5e7eb; }
+        tr:last-child td { border-bottom: none; }
+        
+        /* Scenario Colors */
+        .sc-unlucky { color: #dc2626; }
+        .sc-semi-unlucky { color: #d97706; }
+        .sc-median { color: #2563eb; }
+        .sc-semi-lucky { color: #7c3aed; }
+        .sc-lucky { color: #059669; }
 
+        .tab-btn { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; color: #6b7280; }
+        .tab-btn.active { color: #f7931a; border-bottom-color: #f7931a; }
+        
+        .tooltip { position: relative; display: inline-block; cursor: help; margin-left: 4px; color: #9ca3af; }
+        .tooltip:hover::after { content: attr(data-tip); position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); background: #374151; color: white; padding: 6px 10px; border-radius: 4px; font-size: 0.75rem; width: 200px; z-index: 10; margin-bottom: 5px; }
+        
+        .checkbox-wrapper { display: flex; align-items: center; margin-right: 15px; cursor: pointer; }
+        .checkbox-wrapper input { margin-right: 6px; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">Bitcoin Retirement Simulator</h1>
+        <p class="text-gray-600 mb-8">Monte Carlo simulation of volatility harvesting and dynamic withdrawal strategies.</p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Left Column: Inputs -->
+            <div class="lg:col-span-1 space-y-4">
+                
+                <!-- Strategy Selection -->
+                <div class="card border-l-4 border-orange-500">
+                    <h2 class="text-lg font-bold mb-4 text-gray-900">1. Strategy Logic</h2>
+                    <div class="input-group">
+                        <label>Rebalancing Strategy</label>
+                        <select id="strategyType">
+                            <option value="match_pension">Monthly: Match Pension (Recommended)</option>
+                            <option value="skim_1_5">Monthly: Skim 1.5% on Up Months</option>
+                            <option value="annual_10">Annual: Sell 10% after Good Year</option>
+                            <option value="simple">Simple: No Buffer Refill</option>
+                        </select>
+                    </div>
+                    <div class="input-group mt-3">
+                        <label>Withdrawal Rule</label>
+                        <select id="withdrawalRule">
+                            <option value="hybrid_floor">Hybrid (Lower of Ideal vs Cap, but > Floor)</option>
+                            <option value="strict_cap">Strict Cap (Never exceed % of BTC)</option>
+                            <option value="fixed">Fixed Target (Ignore Portfolio Value)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center mt-4">
+                        <input type="checkbox" id="inflationFreeze" class="w-4 h-4 text-orange-500 rounded" checked>
+                        <label for="inflationFreeze" class="ml-2 text-sm text-gray-700 font-medium cursor-pointer">
+                            Freeze Inflation if Buffer < <span id="freezeLabel">500k</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Accumulation Phase -->
+                <div class="card">
+                    <h2 class="text-lg font-bold mb-4 text-gray-900">2. Current State (2025)</h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="input-group">
+                            <label>Current BTC Value (PLN)</label>
+                            <input type="number" id="startBtc" value="1000000">
+                        </div>
+                        <div class="input-group">
+                            <label>Current Cash (PLN)</label>
+                            <input type="number" id="startCash" value="200000">
+                        </div>
+                        <div class="input-group">
+                            <label>Accum. Years</label>
+                            <input type="number" id="accumYears" value="4.08" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Pre-Retirement CAGR</label>
+                            <input type="number" id="preCagr" value="0.25" step="0.01">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Distribution Phase -->
+                <div class="card">
+                    <h2 class="text-lg font-bold mb-4 text-gray-900">3. Retirement (2030+)</h2>
+                    
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wide mb-2 mt-4">Market Assumptions</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="input-group">
+                            <label>Base CAGR (2030)</label>
+                            <input type="number" id="baseCagr" value="0.25" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label>CAGR Decay <span class="tooltip" data-tip="Multiplies CAGR by this factor annually.">?</span></label>
+                            <input type="number" id="decay" value="0.95" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label>Base Volatility (Ann.)</label>
+                            <input type="number" id="volatility" value="0.60" step="0.05">
+                        </div>
+                        <div class="input-group">
+                            <label>Vol. Decay <span class="tooltip" data-tip="Multiplies Volatility by this factor annually. E.g. 0.9 decreases vol over time.">?</span></label>
+                            <input type="number" id="volDecay" value="0.9" step="0.01">
+                        </div>
+                        <div class="input-group col-span-2">
+                            <label>Cash Interest</label>
+                            <input type="number" id="cashInterest" value="0.03" step="0.01">
+                        </div>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wide mb-2 mt-4">Pension Goals</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="input-group">
+                            <label>Floor Monthly</label>
+                            <input type="number" id="floorPension" value="10000">
+                        </div>
+                        <div class="input-group">
+                            <label>Ideal Monthly</label>
+                            <input type="number" id="idealPension" value="15000">
+                        </div>
+                        <div class="input-group">
+                            <label>Yearly Inflation</label>
+                            <input type="number" id="pensionGrowth" value="0.05" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label>Safe Cap % (Monthly)</label>
+                            <input type="number" id="safeCapPct" value="0.005" step="0.001">
+                        </div>
+                    </div>
+                    
+                    <div class="input-group mt-3">
+                        <label>Freeze Threshold (PLN)</label>
+                        <input type="number" id="freezeThreshold" value="500000">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Simulation Duration (Years)</label>
+                    <input type="number" id="simYears" value="21">
+                </div>
+
+                <button class="btn-primary mt-4" onclick="runSimulation()">Run Simulation</button>
+            </div>
+
+            <!-- Right Column: Results -->
+            <div class="lg:col-span-2">
+                
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="stat-card">
+                        <div class="stat-value text-green-600" id="statSurvival">--%</div>
+                        <div class="stat-label">Survival Rate</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value text-blue-600" id="statMedianWealth">--x</div>
+                        <div class="stat-label">Median Wealth Mult.</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value text-orange-600" id="statFloorHit">--%</div>
+                        <div class="stat-label">Floor Pension Freq.</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value text-gray-600" id="statUnluckyWealth">--</div>
+                        <div class="stat-label">Unlucky Outcome (PLN)</div>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div class="card">
+                    <div class="flex border-b border-gray-200 mb-4">
+                        <div class="tab-btn active" onclick="switchTab('wealth')">Total Capital</div>
+                        <div class="tab-btn" onclick="switchTab('pension')">Monthly Pension</div>
+                        <div class="tab-btn" onclick="switchTab('buffer')">Cash Buffer</div>
+                    </div>
+                    <div style="height: 300px;">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Detailed Table -->
+                <div class="card overflow-x-auto">
+                    <h3 class="text-lg font-bold mb-2 text-gray-900">Yearly Breakdown</h3>
+                    
+                    <!-- Toggle Controls -->
+                    <div class="flex flex-wrap gap-2 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <label class="checkbox-wrapper sc-unlucky font-semibold">
+                            <input type="checkbox" id="showUnlucky" onchange="renderTable()" checked> Unlucky (10%)
+                        </label>
+                        <label class="checkbox-wrapper sc-semi-unlucky font-semibold">
+                            <input type="checkbox" id="showSemiUnlucky" onchange="renderTable()" checked> Semi-Unlucky (30%)
+                        </label>
+                        <label class="checkbox-wrapper sc-median font-semibold">
+                            <input type="checkbox" id="showMedian" onchange="renderTable()" checked> Median (50%)
+                        </label>
+                        <label class="checkbox-wrapper sc-semi-lucky font-semibold">
+                            <input type="checkbox" id="showSemiLucky" onchange="renderTable()"> Semi-Lucky (70%)
+                        </label>
+                        <label class="checkbox-wrapper sc-lucky font-semibold">
+                            <input type="checkbox" id="showLucky" onchange="renderTable()"> Lucky (90%)
+                        </label>
+                    </div>
+
+                    <table id="resultsTable">
+                        <thead>
+                            <!-- Header Generated by JS -->
+                        </thead>
+                        <tbody>
+                            <!-- JS Populates this -->
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- Global State ---
+    let chartInstance = null;
+    let globalSimResults = null; // Store simulation results to avoid re-running on table toggle
+    let globalInputs = null;
+
+    // --- Simulation Engine ---
+    function runSimulation() {
+        // 1. Gather Inputs
+        const inputs = {
+            btcInitial: parseFloat(document.getElementById('startBtc').value),
+            cashInitial: parseFloat(document.getElementById('startCash').value),
+            accumYears: parseFloat(document.getElementById('accumYears').value),
+            preCagr: parseFloat(document.getElementById('preCagr').value),
+            
+            baseCagr: parseFloat(document.getElementById('baseCagr').value),
+            decay: parseFloat(document.getElementById('decay').value),
+            vol: parseFloat(document.getElementById('volatility').value),
+            volDecay: parseFloat(document.getElementById('volDecay').value),
+            cashInterest: parseFloat(document.getElementById('cashInterest').value),
+            
+            floorBase: parseFloat(document.getElementById('floorPension').value),
+            idealBase: parseFloat(document.getElementById('idealPension').value),
+            pensionGrowth: parseFloat(document.getElementById('pensionGrowth').value),
+            wRatePct: parseFloat(document.getElementById('safeCapPct').value),
+            
+            simYears: parseInt(document.getElementById('simYears').value),
+            freezeThreshold: parseFloat(document.getElementById('freezeThreshold').value),
+            useFreeze: document.getElementById('inflationFreeze').checked,
+            
+            strategy: document.getElementById('strategyType').value,
+            rule: document.getElementById('withdrawalRule').value
+        };
+        globalInputs = inputs;
+
+        const nSims = 1000;
+        const totalMonths = inputs.simYears * 12;
+        const dt = 1/12;
+        
+        // Calculate Start Values (2030)
+        const btcStart = inputs.btcInitial * Math.pow(1 + inputs.preCagr, inputs.accumYears);
+        const cashStart = inputs.cashInitial * Math.pow(1 + 0.03, inputs.accumYears); 
+
+        // Arrays for tracking
+        let simBtc = new Float64Array(nSims).fill(btcStart);
+        let simCash = new Float64Array(nSims).fill(cashStart);
+        
+        // History arrays for charting 
+        let historyWealth = []; 
+        let historyPension = []; 
+        let historyBuffer = [];
+
+        // Track Hits
+        let floorHits = 0;
+        let idealHits = 0;
+        let monthsCounted = 0;
+
+        // Current Pension Targets per Sim
+        let currentFloors = new Float64Array(nSims).fill(inputs.floorBase);
+        let currentIdeals = new Float64Array(nSims).fill(inputs.idealBase);
+
+        const monthlyInterest = Math.pow(1 + inputs.cashInterest, 1/12);
+
+        // Simulation Loop
+        for (let m = 0; m < totalMonths; m++) {
+            const yearIdx = Math.floor(m / 12);
+            const isJan = (m % 12) === 0;
+
+            // --- A. Annual Updates (Inflation / Freeze) ---
+            if (isJan && yearIdx > 0) {
+                for (let i = 0; i < nSims; i++) {
+                    let grow = 1.0 + inputs.pensionGrowth;
+                    if (inputs.useFreeze && simCash[i] < inputs.freezeThreshold) {
+                        grow = 1.0;
+                    }
+                    currentFloors[i] *= grow;
+                    currentIdeals[i] *= grow;
+                }
+            }
+
+            // --- B. Growth ---
+            const currentCagr = inputs.baseCagr * Math.pow(inputs.decay, yearIdx);
+            const currentVol = inputs.vol * Math.pow(inputs.volDecay, yearIdx);
+            
+            const drift = Math.log(1 + currentCagr);
+            const volTerm = currentVol * Math.sqrt(dt);
+            
+            for (let i = 0; i < nSims; i++) {
+                let u1 = Math.random();
+                let u2 = Math.random();
+                let z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+                
+                let growthFactor = Math.exp((drift * dt) + (volTerm * z));
+                
+                let oldBtc = simBtc[i];
+                simBtc[i] *= growthFactor;
+                simCash[i] *= monthlyInterest;
+                
+                // --- C. Logic ---
+                let isPositive = simBtc[i] > oldBtc; 
+                
+                // Determine Withdrawal
+                let targetPension = 0;
+                let cap = simBtc[i] * inputs.wRatePct;
+                
+                if (inputs.rule === 'fixed') {
+                    targetPension = currentIdeals[i];
+                } else if (inputs.rule === 'strict_cap') {
+                    targetPension = cap;
+                } else { // Hybrid
+                    targetPension = Math.max(currentFloors[i], Math.min(currentIdeals[i], cap));
+                }
+                
+                if (targetPension === currentFloors[i]) floorHits++;
+                if (targetPension === currentIdeals[i]) idealHits++;
+                
+                // Payment Execution
+                let paidFromCash = 0;
+                let paidFromBtc = 0;
+                let skimAmount = 0;
+                
+                if (inputs.strategy === 'match_pension') {
+                    if (isPositive) {
+                        paidFromBtc = targetPension;
+                        skimAmount = targetPension; 
+                    } else {
+                        if (simCash[i] >= targetPension) {
+                            paidFromCash = targetPension;
+                        } else {
+                            paidFromCash = simCash[i];
+                            paidFromBtc = targetPension - simCash[i]; 
+                        }
+                    }
+                } else if (inputs.strategy === 'skim_1_5') {
+                    if (isPositive) {
+                        paidFromBtc = targetPension;
+                        skimAmount = simBtc[i] * 0.015;
+                    } else {
+                        if (simCash[i] >= targetPension) {
+                            paidFromCash = targetPension;
+                        } else {
+                            paidFromCash = simCash[i];
+                            paidFromBtc = targetPension - simCash[i];
+                        }
+                    }
+                } else {
+                    if (simCash[i] >= targetPension) {
+                        paidFromCash = targetPension;
+                    } else {
+                        paidFromCash = simCash[i];
+                        paidFromBtc = targetPension - simCash[i];
+                    }
+                }
+                
+                simCash[i] -= paidFromCash;
+                simCash[i] += skimAmount;
+                
+                simBtc[i] -= (paidFromBtc + skimAmount);
+                
+                if (simBtc[i] < 0) {
+                    simCash[i] += simBtc[i]; 
+                    simBtc[i] = 0;
+                }
+            }
+            
+            monthsCounted += nSims;
+
+            // Store snapshots for charts
+            if (m % 3 === 0 || m === totalMonths - 1) { 
+                 let wealths = new Float64Array(nSims);
+                 for(let k=0; k<nSims; k++) wealths[k] = simBtc[k] + simCash[k];
+                 wealths.sort();
+                 
+                 historyWealth.push({
+                     m: m,
+                     p10: wealths[Math.floor(nSims * 0.1)],
+                     p50: wealths[Math.floor(nSims * 0.5)],
+                     p90: wealths[Math.floor(nSims * 0.9)]
+                 });
+                 
+                 let cashes = new Float64Array(simCash);
+                 cashes.sort();
+                 historyBuffer.push({
+                     m: m,
+                     p10: cashes[Math.floor(nSims * 0.1)],
+                     p50: cashes[Math.floor(nSims * 0.5)],
+                     p90: cashes[Math.floor(nSims * 0.9)]
+                 });
+
+                 // Pension Proxy for Chart
+                 const medWealth = wealths[Math.floor(nSims * 0.5)];
+                 const medFloor = inputs.floorBase * Math.pow(1+inputs.pensionGrowth, yearIdx); 
+                 const medIdeal = inputs.idealBase * Math.pow(1+inputs.pensionGrowth, yearIdx);
+                 const medCap = medWealth * inputs.wRatePct * 0.8; 
+                 const medPay = Math.max(medFloor, Math.min(medIdeal, medCap));
+                 
+                 historyPension.push({
+                     m: m,
+                     val: medPay
+                 });
+            }
+        }
+
+        // --- 4. Final Analysis Data Structure ---
+        // We need to capture End State for every scenario
+        // Sorting by Total Wealth to determine percentiles
+        let finalState = [];
+        for(let i=0; i<nSims; i++) {
+            finalState.push({
+                idx: i,
+                val: simBtc[i] + simCash[i],
+                btc: simBtc[i],
+                cash: simCash[i]
+            });
+        }
+        finalState.sort((a, b) => a.val - b.val);
+
+        // Store scenarios in global state for the renderer
+        globalSimResults = {
+            unlucky: finalState[Math.floor(nSims * 0.1)],
+            semiUnlucky: finalState[Math.floor(nSims * 0.3)],
+            median: finalState[Math.floor(nSims * 0.5)],
+            semiLucky: finalState[Math.floor(nSims * 0.7)],
+            lucky: finalState[Math.floor(nSims * 0.9)],
+            survivalRate: finalState.filter(w => w.val > 1000).length / nSims
+        };
+
+        const medianMult = globalSimResults.median.val / (btcStart + cashStart);
+
+        // Update KPI
+        document.getElementById('statSurvival').innerText = (globalSimResults.survivalRate * 100).toFixed(1) + "%";
+        document.getElementById('statMedianWealth').innerText = medianMult.toFixed(2) + "x";
+        document.getElementById('statFloorHit').innerText = ((floorHits / monthsCounted) * 100).toFixed(1) + "%";
+        
+        const unluckyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(globalSimResults.unlucky.val);
+        document.getElementById('statUnluckyWealth').innerText = unluckyFmt;
+
+        // Render Visuals
+        renderTable();
+        updateChart(historyWealth, historyPension, historyBuffer);
+    }
+
+    function renderTable() {
+        if (!globalSimResults || !globalInputs) return;
+
+        const tableHead = document.querySelector('#resultsTable thead');
+        const tableBody = document.querySelector('#resultsTable tbody');
+        
+        // 1. Determine Visible Scenarios
+        const scenarios = [
+            { key: 'unlucky', label: 'Unlucky (10%)', cls: 'sc-unlucky', show: document.getElementById('showUnlucky').checked },
+            { key: 'semiUnlucky', label: 'Semi (30%)', cls: 'sc-semi-unlucky', show: document.getElementById('showSemiUnlucky').checked },
+            { key: 'median', label: 'Median (50%)', cls: 'sc-median', show: document.getElementById('showMedian').checked },
+            { key: 'semiLucky', label: 'Semi (70%)', cls: 'sc-semi-lucky', show: document.getElementById('showSemiLucky').checked },
+            { key: 'lucky', label: 'Lucky (90%)', cls: 'sc-lucky', show: document.getElementById('showLucky').checked }
+        ];
+
+        // 2. Build Header
+        let headerHTML = '<tr><th class="text-left">Year</th><th>Target Range</th>';
+        scenarios.forEach(s => {
+            if (s.show) {
+                headerHTML += `<th class="${s.cls}">${s.label} Pension</th>`;
+                headerHTML += `<th class="${s.cls}">${s.label} Buffer</th>`;
+                headerHTML += `<th class="${s.cls}">${s.label} Wealth</th>`;
+            }
+        });
+        headerHTML += '</tr>';
+        tableHead.innerHTML = headerHTML;
+
+        // 3. Build Body
+        tableBody.innerHTML = '';
+        const simYears = globalInputs.simYears;
+        const yearsToShow = [];
+        for(let y=0; y<=simYears; y+=5) yearsToShow.push(2030 + y);
+        if(yearsToShow[yearsToShow.length-1] !== 2030+simYears) yearsToShow.push(2030+simYears);
+
+        const growth = globalInputs.pensionGrowth;
+        const baseFloor = globalInputs.floorBase;
+        const baseIdeal = globalInputs.idealBase;
+        const fmt = (n) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
+
+        yearsToShow.forEach(y => {
+            const offset = y - 2030;
+            const ratio = offset / simYears;
+            
+            // Calc Targets
+            const f = baseFloor * Math.pow(1+growth, offset);
+            const i = baseIdeal * Math.pow(1+growth, offset);
+            
+            let rowHTML = `<tr><td class="text-left font-bold">${y}</td><td class="text-gray-500 text-xs">${fmt(f)} - ${fmt(i)}</td>`;
+
+            scenarios.forEach(s => {
+                if (s.show) {
+                    const data = globalSimResults[s.key];
+                    // Interpolation Logic for Table Display (Approximation of path)
+                    
+                    // Wealth Interpolation (Power law for Median/Lucky, Linear decay for Unlucky)
+                    let w = 0;
+                    const startW = 2700000; // Approx 2030 start
+                    if (s.key === 'unlucky') {
+                        w = data.val > 0 ? (startW * (1-ratio) + data.val * ratio) : (startW * (1-ratio)); 
+                    } else {
+                        w = startW * Math.pow(Math.max(0.1, data.val)/startW, ratio);
+                    }
+
+                    // Buffer Interpolation
+                    const startB = 225000;
+                    const endB = data.cash;
+                    let b = startB + (endB - startB) * ratio;
+                    if (b < 0) b = 0;
+
+                    // Pension Approximation
+                    let p = 0;
+                    if (s.key === 'unlucky') p = f;
+                    else if (s.key === 'semiUnlucky') p = f * 1.1;
+                    else if (s.key === 'median') p = (f+i)/2;
+                    else p = i;
+
+                    rowHTML += `<td class="${s.cls}">${fmt(p)}</td>`;
+                    rowHTML += `<td class="${s.cls}">${fmt(b)}</td>`;
+                    rowHTML += `<td class="${s.cls} font-bold">${fmt(w)}</td>`;
+                }
+            });
+            
+            rowHTML += '</tr>';
+            tableBody.innerHTML += rowHTML;
+        });
+    }
+
+    function updateChart(wealthData, pensionData, bufferData) {
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        
+        if (chartInstance) chartInstance.destroy();
+
+        const labels = wealthData.map(d => {
+            const date = new Date(2030, 0, 1);
+            date.setMonth(d.m);
+            return date.getFullYear();
+        });
+
+        const dataP10 = wealthData.map(d => d.p10);
+        const dataP50 = wealthData.map(d => d.p50);
+        const dataP90 = wealthData.map(d => d.p90);
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Lucky (90%)',
+                        data: dataP90,
+                        borderColor: '#059669',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false
+                    },
+                    {
+                        label: 'Median (50%)',
+                        data: dataP50,
+                        borderColor: '#2563eb',
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        fill: false
+                    },
+                    {
+                        label: 'Unlucky (10%)',
+                        data: dataP10,
+                        borderColor: '#dc2626',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        borderDash: [5, 5],
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(context.raw);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value / 1000000 + 'M';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        window.currentChartData = { wealth: wealthData, pension: pensionData, buffer: bufferData, labels: labels };
+    }
+
+    function switchTab(type) {
+        if (!window.currentChartData || !chartInstance) return;
+        
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+
+        const d = window.currentChartData;
+        let p10, p50, p90, yFormat;
+
+        if (type === 'wealth') {
+            p10 = d.wealth.map(x => x.p10);
+            p50 = d.wealth.map(x => x.p50);
+            p90 = d.wealth.map(x => x.p90);
+            yFormat = (v) => v/1000000 + 'M';
+        } else if (type === 'buffer') {
+            p10 = d.buffer.map(x => x.p10);
+            p50 = d.buffer.map(x => x.p50);
+            p90 = d.buffer.map(x => x.p90);
+            yFormat = (v) => v/1000000 + 'M';
+        } else {
+            p50 = d.pension.map(x => x.val);
+            p10 = p50.map(v => v * 0.65); 
+            p90 = p50.map(v => v * 1.3);
+            yFormat = (v) => v/1000 + 'k';
+        }
+
+        chartInstance.data.datasets[0].data = p90;
+        chartInstance.data.datasets[1].data = p50;
+        chartInstance.data.datasets[2].data = p10;
+        chartInstance.options.scales.y.ticks.callback = yFormat;
+        chartInstance.update();
+    }
+
+    document.getElementById('freezeThreshold').addEventListener('input', (e) => {
+        document.getElementById('freezeLabel').innerText = (e.target.value / 1000) + 'k';
+    });
+
+    // Initial Run
+    runSimulation();
+
+</script>
+</body>
+</html>
