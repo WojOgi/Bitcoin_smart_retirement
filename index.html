@@ -37,6 +37,10 @@
         
         .checkbox-wrapper { display: flex; align-items: center; margin-right: 15px; cursor: pointer; }
         .checkbox-wrapper input { margin-right: 6px; }
+
+        /* Calculator Styles */
+        .calc-result-box { border-left: 4px solid #3b82f6; background-color: #eff6ff; padding: 16px; border-radius: 4px; margin-top: 20px; }
+        .action-highlight { font-weight: 700; color: #1e40af; font-size: 1.1rem; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -55,7 +59,7 @@
                     <h2 class="text-lg font-bold mb-4 text-gray-900">1. Strategy Logic</h2>
                     <div class="input-group">
                         <label>Rebalancing Strategy</label>
-                        <select id="strategyType" onchange="updateStrategyDesc()">
+                        <select id="strategyType" onchange="updateStrategyDesc(); updateCalculator();">
                             <option value="match_pension">Monthly: Match Pension (Recommended)</option>
                             <option value="skim_1_5">Monthly: Skim 1.5% on Up Months</option>
                             <option value="annual_10">Annual: Sell 10% after Good Year</option>
@@ -70,7 +74,7 @@
 
                     <div class="input-group mt-3">
                         <label>Withdrawal Rule</label>
-                        <select id="withdrawalRule" onchange="updateWithdrawalDesc()">
+                        <select id="withdrawalRule" onchange="updateWithdrawalDesc(); updateCalculator();">
                             <option value="hybrid_floor">Hybrid (Lower of Ideal vs Cap, but > Floor)</option>
                             <option value="strict_cap">Strict Cap (Never exceed % of BTC)</option>
                             <option value="fixed">Fixed Target (Ignore Portfolio Value)</option>
@@ -83,7 +87,7 @@
                     </div>
 
                     <div class="flex items-center mt-4">
-                        <input type="checkbox" id="inflationFreeze" class="w-4 h-4 text-orange-500 rounded" checked>
+                        <input type="checkbox" id="inflationFreeze" class="w-4 h-4 text-orange-500 rounded" checked onchange="updateCalculator()">
                         <label for="inflationFreeze" class="ml-2 text-sm text-gray-700 font-medium cursor-pointer">
                             Freeze Inflation if Buffer < <span id="freezeLabel">500k</span>
                         </label>
@@ -145,19 +149,19 @@
                     <div class="grid grid-cols-2 gap-3">
                         <div class="input-group">
                             <label>Floor Monthly</label>
-                            <input type="number" id="floorPension" value="10000">
+                            <input type="number" id="floorPension" value="10000" oninput="updateCalculator()">
                         </div>
                         <div class="input-group">
                             <label>Ideal Monthly</label>
-                            <input type="number" id="idealPension" value="15000">
+                            <input type="number" id="idealPension" value="15000" oninput="updateCalculator()">
                         </div>
                         <div class="input-group">
                             <label>Yearly Inflation</label>
-                            <input type="number" id="pensionGrowth" value="0.05" step="0.01">
+                            <input type="number" id="pensionGrowth" value="0.05" step="0.01" oninput="updateCalculator()">
                         </div>
                         <div class="input-group">
                             <label>Safe Cap % (Monthly)</label>
-                            <input type="number" id="safeCapPct" value="0.005" step="0.001">
+                            <input type="number" id="safeCapPct" value="0.005" step="0.001" oninput="updateCalculator()">
                         </div>
                     </div>
                     
@@ -169,7 +173,7 @@
 
                 <div class="input-group">
                     <label>Simulation Duration (Years)</label>
-                    <input type="number" id="simYears" value="21">
+                    <input type="number" id="simYears" value="10">
                 </div>
 
                 <button class="btn-primary mt-4" onclick="runSimulation()">Run Simulation</button>
@@ -243,6 +247,40 @@
                     </table>
                 </div>
 
+                <!-- ACTION CALCULATOR -->
+                <div class="card border border-blue-200 bg-white">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <span class="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center mr-3 text-sm">Now</span>
+                        Monthly Action Calculator
+                    </h2>
+                    <p class="text-sm text-gray-500 mb-4">Enter your current real-time stats to get a specific instruction based on the chosen strategy.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div class="input-group">
+                            <label>Current Year</label>
+                            <input type="number" id="calcYear" value="2030" oninput="updateCalculator()">
+                        </div>
+                        <div class="input-group">
+                            <label>Current BTC Value (PLN)</label>
+                            <input type="number" id="calcBtc" value="2500000" oninput="updateCalculator()">
+                        </div>
+                        <div class="input-group">
+                            <label>Current Buffer (PLN)</label>
+                            <input type="number" id="calcBuffer" value="250000" oninput="updateCalculator()">
+                        </div>
+                        <div class="input-group">
+                            <label>BTC Return This Month (%)</label>
+                            <input type="number" id="calcReturn" value="5.0" step="0.1" oninput="updateCalculator()">
+                        </div>
+                    </div>
+                    
+                    <button class="btn-primary mb-4 bg-blue-600 hover:bg-blue-700" onclick="updateCalculator()">Calculate Action</button>
+
+                    <div id="calcResult" class="calc-result-box hidden">
+                        <!-- Result populated by JS -->
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -250,7 +288,7 @@
 <script>
     // --- Global State ---
     let chartInstance = null;
-    let globalSimResults = null; // Store simulation results to avoid re-running on table toggle
+    let globalSimResults = null; 
     let globalInputs = null;
 
     // --- Strategy Descriptions ---
@@ -273,7 +311,6 @@
         }
     };
 
-    // --- Withdrawal Descriptions ---
     const withdrawalInfo = {
         'hybrid_floor': {
             desc: "<strong>Logic:</strong> Flexible withdrawal. Calculate Safe Cap (0.5% of BTC). If Cap is between Floor and Ideal, take Cap. If Cap > Ideal, take Ideal (save remainder). If Cap < Floor, take Floor (subsidized by Buffer).",
@@ -299,6 +336,139 @@
         const val = document.getElementById('withdrawalRule').value;
         const info = withdrawalInfo[val];
         document.getElementById('withdrawalDescription').innerHTML = `${info.desc}<br><div class="mt-1 text-gray-500">${info.ex}</div>`;
+    }
+
+    // --- Action Calculator Logic ---
+    function updateCalculator() {
+        const currentYear = parseFloat(document.getElementById('calcYear').value);
+        const currentBtc = parseFloat(document.getElementById('calcBtc').value);
+        const currentBuffer = parseFloat(document.getElementById('calcBuffer').value);
+        const monthlyReturn = parseFloat(document.getElementById('calcReturn').value);
+        
+        const strategy = document.getElementById('strategyType').value;
+        const withdrawalRule = document.getElementById('withdrawalRule').value;
+        
+        // Goals (Inflation Adjusted)
+        const startYear = 2030;
+        const yearsPassed = Math.max(0, currentYear - startYear);
+        const growthRate = parseFloat(document.getElementById('pensionGrowth').value);
+        const baseFloor = parseFloat(document.getElementById('floorPension').value);
+        const baseIdeal = parseFloat(document.getElementById('idealPension').value);
+        
+        // Simple inflation adjustment (ignores freeze history for this instant calculator, assumes standard path)
+        const inflationFactor = Math.pow(1 + growthRate, yearsPassed);
+        const targetFloor = baseFloor * inflationFactor;
+        const targetIdeal = baseIdeal * inflationFactor;
+        
+        // Calculate Pension
+        const wRatePct = parseFloat(document.getElementById('safeCapPct').value);
+        const safeCap = currentBtc * wRatePct;
+        
+        let actualPension = 0;
+        if (withdrawalRule === 'fixed') {
+            actualPension = targetIdeal;
+        } else if (withdrawalRule === 'strict_cap') {
+            actualPension = safeCap;
+        } else { // Hybrid
+            actualPension = Math.max(targetFloor, Math.min(targetIdeal, safeCap));
+        }
+        
+        // Strategy Logic
+        const isPositive = monthlyReturn > 0;
+        let sellBtc = 0;
+        let drainBuffer = 0;
+        let addToBuffer = 0;
+        let message = "";
+        
+        if (strategy === 'match_pension') {
+            if (isPositive) {
+                // Sell 2x Pension (1 to pocket, 1 to buffer)
+                sellBtc = actualPension * 2;
+                addToBuffer = actualPension;
+                message = `Bitcoin is UP. Sell 2x Pension amount. Use half for living, put half in buffer.`;
+            } else {
+                // Drain Buffer
+                if (currentBuffer >= actualPension) {
+                    drainBuffer = actualPension;
+                    message = `Bitcoin is DOWN/FLAT. Preserve Bitcoin. Pay pension entirely from Buffer.`;
+                } else {
+                    drainBuffer = currentBuffer;
+                    sellBtc = actualPension - currentBuffer;
+                    message = `Bitcoin is DOWN. Buffer is insufficient! Drain remaining buffer (${Math.round(drainBuffer)}) and sell Bitcoin for the rest.`;
+                }
+            }
+        } else if (strategy === 'skim_1_5') {
+            if (isPositive) {
+                // Sell Pension + 1.5% Skim
+                const skim = currentBtc * 0.015;
+                sellBtc = actualPension + skim;
+                addToBuffer = skim;
+                message = `Bitcoin is UP. Pay pension from BTC profits AND skim 1.5% (${Math.round(skim).toLocaleString()} PLN) into buffer.`;
+            } else {
+                // Drain Buffer
+                if (currentBuffer >= actualPension) {
+                    drainBuffer = actualPension;
+                    message = `Bitcoin is DOWN/FLAT. Preserve Bitcoin. Pay pension entirely from Buffer.`;
+                } else {
+                    drainBuffer = currentBuffer;
+                    sellBtc = actualPension - currentBuffer;
+                    message = `Bitcoin is DOWN. Buffer insufficient. Drain buffer and sell remainder from BTC.`;
+                }
+            }
+        } else {
+            // Simple/Annual (Monthly logic default)
+            // Just pay pension. If positive, from BTC. If negative, from Buffer (Standard safe withdrawal)
+            if (isPositive) {
+                sellBtc = actualPension;
+                message = `Bitcoin is UP. Sell Bitcoin to pay pension.`;
+            } else {
+                if (currentBuffer >= actualPension) {
+                    drainBuffer = actualPension;
+                    message = `Bitcoin is DOWN. Pay from Buffer.`;
+                } else {
+                    drainBuffer = currentBuffer;
+                    sellBtc = actualPension - currentBuffer;
+                    message = `Bitcoin is DOWN. Drain Buffer, pay rest from BTC.`;
+                }
+            }
+        }
+        
+        // Formatting
+        const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(n);
+        
+        const resultHTML = `
+            <div class="mb-4">
+                <div class="text-sm font-bold text-gray-500 uppercase">Calculated Pension Target</div>
+                <div class="text-2xl font-bold text-gray-900">${fmt(actualPension)}</div>
+                <div class="text-xs text-gray-500">Based on Floor ${fmt(targetFloor)} / Ideal ${fmt(targetIdeal)}</div>
+            </div>
+            
+            <div class="p-3 bg-white border border-blue-200 rounded mb-3">
+                <div class="text-sm font-bold text-blue-800 mb-1">INSTRUCTION:</div>
+                <div class="text-gray-800 text-sm mb-2">${message}</div>
+                <ul class="list-disc list-inside text-sm text-gray-700">
+                    <li><strong>Sell Bitcoin:</strong> ${fmt(sellBtc)}</li>
+                    <li><strong>Withdraw from Buffer:</strong> ${fmt(drainBuffer)}</li>
+                    <li><strong>Add to Buffer:</strong> ${fmt(addToBuffer)}</li>
+                    <li><strong>Net to Pocket:</strong> ${fmt(actualPension)}</li>
+                </ul>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-2 rounded">
+                <div>
+                    <span class="block text-gray-500">New BTC Balance</span>
+                    <span class="font-bold">${fmt(currentBtc - sellBtc)}</span>
+                </div>
+                <div>
+                    <span class="block text-gray-500">New Cash Buffer</span>
+                    <span class="font-bold">${fmt(currentBuffer - drainBuffer + addToBuffer)}</span>
+                </div>
+            </div>
+        `;
+        
+        const resBox = document.getElementById('calcResult');
+        resBox.innerHTML = resultHTML;
+        resBox.classList.remove('hidden');
     }
 
     // --- Simulation Engine ---
@@ -535,6 +705,11 @@
         // Render Visuals
         renderTable();
         updateChart(historyWealth, historyPension, historyBuffer);
+        
+        // Auto update calc based on first year simulation values for user convenience
+        // document.getElementById('calcBtc').value = Math.round(btcStart);
+        // document.getElementById('calcBuffer').value = Math.round(cashStart);
+        updateCalculator();
     }
 
     function renderTable() {
