@@ -12,6 +12,7 @@
         .input-group label { display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 4px; }
         .input-group input, .input-group select { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
         .input-group input:focus { outline: none; border-color: #3b82f6; ring: 2px #3b82f6; }
+        .input-group input[readonly] { background-color: #f3f4f6; color: #6b7280; cursor: not-allowed; }
         .btn-primary { background-color: #f7931a; color: white; font-weight: 600; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; transition: background 0.2s; width: 100%; }
         .btn-primary:hover { background-color: #e68b15; }
         .btn-secondary { background-color: #e5e7eb; color: #374151; font-weight: 600; padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.8rem; transition: background 0.2s; }
@@ -128,10 +129,14 @@
                             <input type="number" id="startCash" value="200000">
                         </div>
                         <div class="input-group">
-                            <label>Accum. Years</label>
-                            <input type="number" id="accumYears" value="4.08" step="0.1">
+                            <label>Retirement Year</label>
+                            <input type="number" id="retirementYear" value="2030" oninput="updateAccumYears()">
                         </div>
                         <div class="input-group">
+                            <label>Accum. Years <span class="tooltip" data-tip="Years between 2025 and Retirement">?</span></label>
+                            <input type="number" id="accumYears" value="5" readonly>
+                        </div>
+                        <div class="input-group col-span-2">
                             <label>Pre-Retirement CAGR</label>
                             <input type="number" id="preCagr" value="0.25" step="0.01">
                         </div>
@@ -140,12 +145,12 @@
 
                 <!-- Distribution Phase -->
                 <div class="card">
-                    <h2 class="text-lg font-bold mb-4 text-gray-900">3. Retirement (2030+)</h2>
+                    <h2 class="text-lg font-bold mb-4 text-gray-900">3. Retirement Phase</h2>
                     
                     <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wide mb-2 mt-4">Market Assumptions</h3>
                     <div class="grid grid-cols-2 gap-3">
                         <div class="input-group">
-                            <label>Base CAGR (2030)</label>
+                            <label>Base CAGR (Start)</label>
                             <input type="number" id="baseCagr" value="0.25" step="0.01">
                         </div>
                         <div class="input-group">
@@ -379,6 +384,17 @@
         }
     }
 
+    function updateAccumYears() {
+        const retirement = parseInt(document.getElementById('retirementYear').value) || 2030;
+        const current = 2025; // Base current year
+        const accum = Math.max(0, retirement - current);
+        document.getElementById('accumYears').value = accum;
+        
+        // Also update calcYear default for convenience if user changes retirement target
+        document.getElementById('calcYear').value = retirement;
+        updateCalculator();
+    }
+
     // --- Strategy Descriptions ---
     const strategyInfo = {
         'match_pension': {
@@ -437,8 +453,10 @@
         const withdrawalRule = document.getElementById('withdrawalRule').value;
         
         // Goals (Inflation Adjusted)
-        const startYear = 2030;
+        const retirementYear = parseFloat(document.getElementById('retirementYear').value) || 2030;
+        const startYear = retirementYear;
         const yearsPassed = Math.max(0, currentYear - startYear);
+        
         const growthRate = parseFloat(document.getElementById('pensionGrowth').value);
         const baseFloor = parseFloat(document.getElementById('floorPension').value);
         const baseIdeal = parseFloat(document.getElementById('idealPension').value);
@@ -562,15 +580,18 @@
     // --- Simulation Engine ---
     function runSimulation() {
         // 1. Gather Inputs
-        // Use default if element is missing from DOM (fallback safety)
         const nSimsEl = document.getElementById('nSims');
         const nSimsInput = nSimsEl ? parseInt(nSimsEl.value) : 1000;
         const nSims = isNaN(nSimsInput) ? 1000 : nSimsInput;
+
+        // Auto-update Accum Years just in case
+        updateAccumYears();
 
         const inputs = {
             btcInitial: parseFloat(document.getElementById('startBtc').value),
             cashInitial: parseFloat(document.getElementById('startCash').value),
             accumYears: parseFloat(document.getElementById('accumYears').value),
+            retirementYear: parseFloat(document.getElementById('retirementYear').value),
             preCagr: parseFloat(document.getElementById('preCagr').value),
             
             baseCagr: parseFloat(document.getElementById('baseCagr').value),
@@ -596,7 +617,8 @@
         const totalMonths = inputs.simYears * 12;
         const dt = 1/12;
         
-        // Calculate Start Values (2030)
+        // Calculate Start Values based on accumYears
+        // (inputs.accumYears should be auto-updated by updateAccumYears before this)
         const btcStart = inputs.btcInitial * Math.pow(1 + inputs.preCagr, inputs.accumYears);
         const cashStart = inputs.cashInitial * Math.pow(1 + 0.03, inputs.accumYears); 
 
@@ -760,10 +782,6 @@
             
             // **Capture Yearly Stats for Table** (At Month 11, 23, 35...)
             if (m % 12 === 11) {
-                // Calculate Average Monthly Pension for THIS year for each sim
-                // Then sort to find percentile scenarios
-                
-                // We create a temporary array of objects to sort by total wealth (cross-sectional consistency)
                 let yearSnapshots = [];
                 for(let k=0; k<nSims; k++) {
                     yearSnapshots.push({
@@ -774,9 +792,8 @@
                 }
                 yearSnapshots.sort((a, b) => a.w - b.w);
                 
-                // Extract Percentiles
                 yearlyTableData.push({
-                    year: 2030 + yearIdx,
+                    year: inputs.retirementYear + yearIdx,
                     exUnlucky: yearSnapshots[Math.floor(nSims * 0.05)],
                     unlucky: yearSnapshots[Math.floor(nSims * 0.10)],
                     semiUnlucky: yearSnapshots[Math.floor(nSims * 0.30)],
@@ -788,7 +805,6 @@
         }
 
         // --- 4. Final Analysis Data Structure ---
-        // (Just for KPIs)
         let finalState = [];
         for(let i=0; i<nSims; i++) {
             finalState.push({ val: simBtc[i] + simCash[i] });
@@ -797,8 +813,7 @@
         const survivalRate = finalState.filter(w => w.val > 1000).length / nSims;
         const medianMult = finalState[Math.floor(nSims * 0.5)].val / (btcStart + cashStart);
         
-        // Pass yearlyTableData to global
-        globalTableData = yearlyTableData; // STORE HERE
+        globalTableData = yearlyTableData;
 
         document.getElementById('statSurvival').innerText = (survivalRate * 100).toFixed(1) + "%";
         document.getElementById('statMedianWealth').innerText = medianMult.toFixed(2) + "x";
@@ -846,7 +861,7 @@
         // Iterate through stored yearly data
         globalTableData.forEach(row => {
             const y = row.year;
-            const offset = y - 2030;
+            const offset = y - globalInputs.retirementYear;
             
             // Standard Targets (nominal)
             const f = baseFloor * Math.pow(1+growth, offset);
@@ -893,7 +908,7 @@
         if (chartInstance) chartInstance.destroy();
 
         const labels = wealthData.map(d => {
-            const date = new Date(2030, 0, 1);
+            const date = new Date(globalInputs.retirementYear, 0, 1);
             date.setMonth(d.m);
             return date.getFullYear();
         });
