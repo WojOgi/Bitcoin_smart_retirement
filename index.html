@@ -234,6 +234,7 @@
                         </div>
                     </div>
                     
+                    <!-- Chart Visibility Controls -->
                     <div class="flex flex-wrap gap-2 mb-3 justify-center text-xs">
                         <label class="checkbox-wrapper sc-ex-unlucky font-bold"><input type="checkbox" id="chartShowExUnlucky" onchange="updateChartVisibility()" checked> Extreme (5%)</label>
                         <label class="checkbox-wrapper sc-unlucky font-bold"><input type="checkbox" id="chartShowUnlucky" onchange="updateChartVisibility()" checked> Unlucky (10%)</label>
@@ -252,6 +253,7 @@
                 <div class="card overflow-x-auto">
                     <h3 class="text-lg font-bold mb-2 text-gray-900">Yearly Breakdown</h3>
                     
+                    <!-- Table Toggle Controls -->
                     <div class="flex flex-wrap gap-2 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
                         <label class="checkbox-wrapper sc-ex-unlucky font-semibold"><input type="checkbox" id="showExUnlucky" onchange="renderTable()"> Extreme (5%)</label>
                         <label class="checkbox-wrapper sc-unlucky font-semibold"><input type="checkbox" id="showUnlucky" onchange="renderTable()" checked> Unlucky (10%)</label>
@@ -461,6 +463,7 @@
         const baseFloor = getVal('floorPension');
         const baseIdeal = getVal('idealPension');
         const wRatePct = getVal('safeCapPct');
+        const preCagr = getVal('preCagr'); // Assuming simple Pre-CAGR projection for target
         
         const inflationFactor = Math.pow(1 + growthRate, yearsPassed);
         const targetFloor = baseFloor * inflationFactor;
@@ -491,6 +494,25 @@
 
         const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(n);
         
+        // Calculate Target Price in Retirement Year
+        // Logic: Live Price * (1 + PreCagr)^(Retirement - 2025)
+        // If live price not available, show nothing or calc based on current input?
+        // Let's use currentBtcPricePln if available
+        
+        let contextHtml = "";
+        if (currentBtcPricePln > 0) {
+            const retYear = getVal('retirementYear', 2030);
+            const currentYearDate = new Date().getFullYear(); // ~2025
+            const yearsToRet = Math.max(0, retYear - 2025);
+            const projPrice = currentBtcPricePln * Math.pow(1 + preCagr, yearsToRet);
+            
+            contextHtml = `
+            <div class="mt-3 pt-3 border-t border-blue-200 text-xs text-blue-800 flex justify-between">
+                <div>Live 1 BTC: <strong>${fmt(currentBtcPricePln)}</strong></div>
+                <div>Target 1 BTC (${retYear}): <strong>${fmt(projPrice)}</strong></div>
+            </div>`;
+        }
+
         const html = `
             <div class="mb-4">
                 <div class="flex items-center justify-between">
@@ -514,6 +536,7 @@
                 <div><span class="block text-gray-500">New BTC Balance</span><span class="font-bold">${fmt(currentBtc - sellBtc)}</span></div>
                 <div><span class="block text-gray-500">New Cash Buffer</span><span class="font-bold">${fmt(currentBuffer - drainBuffer + addToBuffer)}</span></div>
             </div>
+            ${contextHtml}
         `;
         
         const resBox = document.getElementById('calcResult');
